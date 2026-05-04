@@ -81,7 +81,8 @@ func main() {
 				pathEnv := os.Getenv("PATH")
 				for dir := range strings.SplitSeq(pathEnv, string(os.PathListSeparator)) {
 					fullPath := filepath.Join(dir, name)
-					if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+					if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+
 						fmt.Println(name + " is " + fullPath)
 						return
 					}
