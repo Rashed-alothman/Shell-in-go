@@ -17,11 +17,9 @@ func main() {
 
 	// Define a map of command handlers: key is command name, value is a function that takes arguments as a string
 	commands := map[string]func(string){
-		"exit": func(args string) {
-			os.Exit(0)
-		},
+		"exit": func(args string) { os.Exit(0) },
 		// Add more commands here, e.g.:
-		// "echo": func(args string) { fmt.Println(args) },
+		"echo": func(args string) { fmt.Println(args) },
 		// "pwd": func(args string) { cwd, _ := os.Getwd(); fmt.Println(cwd) },
 	}
 
