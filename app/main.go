@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -78,14 +77,9 @@ func main() {
 					fmt.Printf("%s is a %s\n", name, cmd.Type)
 					return
 				}
-				pathEnv := os.Getenv("PATH")
-				for dir := range strings.SplitSeq(pathEnv, string(os.PathListSeparator)) {
-					fullPath := filepath.Join(dir, name)
-					if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-
-						fmt.Println(name + " is " + fullPath)
-						return
-					}
+				if path, err := exec.LookPath(name); err == nil {
+					fmt.Println(name + " is " + path)
+					return
 				}
 				fmt.Println(name + ": not found")
 			},
@@ -196,29 +190,22 @@ func main() {
 		cmd := strings.ToLower(parts[0])
 		args := strings.Join(parts[1:], " ")
 
-		// Look up the command in the map
+		// Check if the command is a built-in command or an external command
 		if handler, ok := commands[cmd]; ok {
 			handler.Handler(args)
 		} else {
-
-			pathEnv := os.Getenv("PATH")
-			for dir := range strings.SplitSeq(pathEnv, string(os.PathListSeparator)) {
-				fullPath := filepath.Join(dir, cmd)
-				if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-					extCmd := exec.Command(fullPath, parts[1:]...)
-					extCmd.Args = parts
-					extCmd.Stdin = os.Stdin
-					extCmd.Stdout = os.Stdout
-					extCmd.Stderr = os.Stderr
-					if err := extCmd.Run(); err != nil {
-						fmt.Fprintln(os.Stderr, err)
-					}
-					return
+			if path, err := exec.LookPath(cmd); err == nil {
+				extCmd := exec.Command(path, parts[1:]...)
+				extCmd.Args = parts
+				extCmd.Stdin = os.Stdin
+				extCmd.Stdout = os.Stdout
+				extCmd.Stderr = os.Stderr
+				if err := extCmd.Run(); err != nil {
+					fmt.Fprintln(os.Stderr, err)
 				}
+			} else {
+				fmt.Println(trimmed + ": command not found")
 			}
-			// got through all of PATH and found nothing
-			fmt.Println(trimmed + ": command not found")
-
 		}
 	}
 }
