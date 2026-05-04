@@ -24,21 +24,21 @@ func main() {
 	var commands = make(map[string]Command)
 	commands = map[string]Command{
 		"exit": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "Exit the shell",
 			Handler: func(args string) {
 				os.Exit(0)
 			},
 		},
 		"echo": {
-			Type:        "shell builtin",
+			Type:        "shell  builtin",
 			Description: "Print text to the screen",
 			Handler: func(args string) {
 				fmt.Println(args)
 			},
 		},
 		"pwd": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "Print the current working directory",
 			Handler: func(args string) {
 				cwd, err := os.Getwd()
@@ -50,7 +50,7 @@ func main() {
 			},
 		},
 		"help": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "Show all available commands",
 			Handler: func(args string) {
 				fmt.Println("Available commands:")
@@ -65,7 +65,7 @@ func main() {
 			},
 		},
 		"type": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "Describe how a command would be interpreted",
 			Handler: func(args string) {
 				name := strings.TrimSpace(args)
@@ -89,7 +89,7 @@ func main() {
 			},
 		},
 		"ls": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "List directory contents",
 			Handler: func(args string) {
 				dir := "."
@@ -107,14 +107,14 @@ func main() {
 			},
 		},
 		"clear": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "Clear the terminal screen",
 			Handler: func(args string) {
 				fmt.Print("\033[H\033[2J")
 			},
 		},
 		"cd": {
-			Type:        "builtin",
+			Type:        "shell builtin",
 			Description: "Change the current directory",
 			Handler: func(args string) {
 				if args == "" {
