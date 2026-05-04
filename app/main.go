@@ -31,7 +31,7 @@ func main() {
 			},
 		},
 		"echo": {
-			Type:        "shell  builtin",
+			Type:        "shell builtin",
 			Description: "Print text to the screen",
 			Handler: func(args string) {
 				fmt.Println(args)
