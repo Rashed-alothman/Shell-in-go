@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -200,7 +201,24 @@ func main() {
 		if handler, ok := commands[cmd]; ok {
 			handler.Handler(args)
 		} else {
+
+			pathEnv := os.Getenv("PATH")
+			for dir := range strings.SplitSeq(pathEnv, string(os.PathListSeparator)) {
+				fullPath := filepath.Join(dir, cmd)
+				if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+					extCmd := exec.Command(fullPath, parts[1:]...)
+					extCmd.Stdin = os.Stdin
+					extCmd.Stdout = os.Stdout
+					extCmd.Stderr = os.Stderr
+					if err := extCmd.Run(); err != nil {
+						fmt.Fprintln(os.Stderr, err)
+					}
+					return
+				}
+			}
+			// got through all of PATH and found nothing
 			fmt.Println(trimmed + ": command not found")
+
 		}
 	}
 }
