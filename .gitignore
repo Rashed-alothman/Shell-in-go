@@ -1,0 +1,13 @@
+# Compiled binary
+shell
+shell.exe
+
+# Go build cache
+/vendor/
+
+# Environment files
+.env
+
+# OS files
+.DS_Store
+Thumbs.db

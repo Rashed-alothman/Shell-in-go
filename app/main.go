@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -127,6 +128,43 @@ func main() {
 				}
 				if err := os.Chdir(args); err != nil {
 					fmt.Fprintln(os.Stderr, "cd:", err)
+				}
+			},
+		},
+		"grep": {
+			Type:        "shell builtin",
+			Description: "Search for a pattern in a file",
+			Handler: func(args string) {
+				parts := strings.Fields(args)
+				if len(parts) < 2 {
+					fmt.Fprintln(os.Stderr, "grep: usage: grep <pattern> <file>")
+					return
+				}
+				pattern := parts[0]
+				filename := strings.Join(parts[1:], " ")
+
+				re, err := regexp.Compile(pattern)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "grep: invalid pattern:", err)
+					return
+				}
+
+				file, err := os.Open(filename)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "grep:", err)
+					return
+				}
+				defer file.Close()
+
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					line := scanner.Text()
+					if re.MatchString(line) {
+						fmt.Println(line)
+					}
+				}
+				if err := scanner.Err(); err != nil {
+					fmt.Fprintln(os.Stderr, "grep:", err)
 				}
 			},
 		},
