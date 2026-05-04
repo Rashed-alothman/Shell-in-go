@@ -11,6 +11,7 @@ import (
 	"strings"
 )
 
+// Command struct represents a shell command with its type, description, and handler function.“
 type Command struct {
 	Type        string
 	Description string
@@ -18,11 +19,9 @@ type Command struct {
 }
 
 func main() {
-	// TODO: implement a type to determine how the command would be interpreted if it were used.
-	// Continue the TODO: it checks whether the command is a built-in command, an alias, or an external command ,an executable file, or unrecognized.
-
 	// Define a map of command handlers: key is command name, value is a function that takes arguments as a string
 	// This allows us to easily add new commands by simply adding new entries to the map without changing the main loop logic.
+	// The "type" field is just for informational purposes, it doesn't affect how the command is executed. It can be used by the "type" command to describe how a command would be interpreted.
 	var commands = make(map[string]Command)
 	commands = map[string]Command{
 		"exit": {
@@ -207,6 +206,7 @@ func main() {
 				fullPath := filepath.Join(dir, cmd)
 				if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
 					extCmd := exec.Command(fullPath, parts[1:]...)
+					extCmd.Args = parts
 					extCmd.Stdin = os.Stdin
 					extCmd.Stdout = os.Stdout
 					extCmd.Stderr = os.Stderr
