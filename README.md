@@ -6,7 +6,8 @@ A Unix shell built from scratch in Go. Started as part of the [CodeCrafters "Bui
 
 - Interactive REPL loop with a `$ ` prompt
 - Extensible command system — each command is a self-describing struct with a type, description, and handler
-- PATH resolution for external executables
+- PATH resolution for external executables with execute permission checking
+- External program execution — any program in PATH can be run with full argument passing
 - Proper error reporting to stderr
 
 ## Built-in Commands
@@ -22,6 +23,18 @@ A Unix shell built from scratch in Go. Started as part of the [CodeCrafters "Bui
 | `clear` | Clear the terminal screen |
 | `help` | List all available commands with descriptions |
 | `exit` | Exit the shell |
+
+## External Programs
+
+Any program available in your PATH can be run directly:
+
+```
+$ git status
+$ python3 script.py
+$ node index.js
+```
+
+The shell finds the executable, verifies it has execute permissions, then runs it and passes all arguments through.
 
 ## Getting Started
 
@@ -69,6 +82,10 @@ echo is a shell builtin
 
 $ type git
 git is /usr/bin/git
+
+$ git status
+On branch main
+nothing to commit, working tree clean
 
 $ help
 Available commands:
