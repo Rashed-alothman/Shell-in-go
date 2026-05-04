@@ -8,18 +8,26 @@ import (
 )
 
 func main() {
+	// TODO: immplement REPL loop
+	//Read: Display a prompt and wait for user input ..status:done
+	//Evaluate: Parse the input and execute the command ..status:done
+	//Print: Display the result of the command execution ..status:done
+	//Loop: Repeat the process until the user exits the shell ..status:done
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("$ ")
 
-	fmt.Print("$ ")
-	// TODO: immplement a support for printing error message when the user input is invalid
-	//read the user input
-	command, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	//check if there is an error reading the user input
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error reading input:", err)
-		os.Exit(1)
-		log.Fatal(err)
+		command, err := reader.ReadString('\n')
+
+		if err != nil {
+
+			fmt.Fprintln(os.Stderr, "Error reading input:", err)
+
+			os.Exit(1)
+
+			log.Fatal(err)
+		}
+
+		fmt.Println(command[:len(command)-1] + ": command not found")
 	}
-	//check if the user input is valid
-	fmt.Println(command[:len(command)-1] + ": command not found")
-
 }
