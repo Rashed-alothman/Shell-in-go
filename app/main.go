@@ -3,91 +3,165 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
-// Command struct represents a shell command with its type, description, and handler function.“
 type Command struct {
 	Type        string
 	Description string
-	Handler     func(string)
+	Handler     func(string, io.Reader, io.Writer)
+}
+
+type stageInfo struct {
+	handler Command
+	args    string
+}
+
+func runPipeline(input string, commands map[string]Command) {
+	stages := strings.Split(input, " | ")
+	if len(stages) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: <cmd1> [args] | <cmd2> [args] | ...")
+		return
+	}
+
+	parsed := make([]stageInfo, 0, len(stages))
+	for i, stage := range stages {
+		stage = strings.TrimSpace(stage)
+		parts := strings.Fields(stage)
+		if len(parts) == 0 {
+			fmt.Fprintf(os.Stderr, "empty stage %d\n", i)
+			return
+		}
+		cmdName := strings.ToLower(parts[0])
+		cmdArgs := ""
+		if len(parts) > 1 {
+			cmdArgs = strings.Join(parts[1:], " ")
+		}
+		handler, ok := commands[cmdName]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "error: command not found: %s\n", cmdName)
+			return
+		}
+		parsed = append(parsed, stageInfo{handler, cmdArgs})
+	}
+
+	readers := make([]*os.File, len(parsed)-1)
+	writers := make([]*os.File, len(parsed)-1)
+	for i := range readers {
+		r, w, err := os.Pipe()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pipe error: %v\n", err)
+			return
+		}
+		readers[i] = r
+		writers[i] = w
+	}
+
+	var wg sync.WaitGroup
+	for i, s := range parsed {
+		wg.Add(1)
+
+		var in io.Reader
+		var out io.Writer
+
+		if i == 0 {
+			in = os.Stdin
+		} else {
+			in = readers[i-1]
+		}
+
+		if i == len(parsed)-1 {
+			out = os.Stdout
+		} else {
+			out = writers[i]
+		}
+
+		go func(h Command, a string, r io.Reader, w io.Writer, idx int) {
+			defer wg.Done()
+			h.Handler(a, r, w)
+			if idx < len(writers) {
+				writers[idx].Close()
+			}
+		}(s.handler, s.args, in, out, i)
+	}
+
+	wg.Wait()
 }
 
 func main() {
-	// Define a map of command handlers: key is command name, value is a function that takes arguments as a string
-	// This allows us to easily add new commands by simply adding new entries to the map without changing the main loop logic.
-	// The "type" field is just for informational purposes, it doesn't affect how the command is executed. It can be used by the "type" command to describe how a command would be interpreted.
-	var commands = make(map[string]Command)
+	var commands map[string]Command
 	commands = map[string]Command{
 		"exit": {
 			Type:        "shell builtin",
 			Description: "Exit the shell",
-			Handler: func(args string) {
+			Handler: func(args string, in io.Reader, out io.Writer) {
 				os.Exit(0)
 			},
 		},
 		"echo": {
 			Type:        "shell builtin",
 			Description: "Print text to the screen",
-			Handler: func(args string) {
-				fmt.Println(args)
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				fmt.Fprintln(out, args)
 			},
 		},
 		"pwd": {
 			Type:        "shell builtin",
 			Description: "Print the current working directory",
-			Handler: func(args string) {
+			Handler: func(args string, in io.Reader, out io.Writer) {
 				cwd, err := os.Getwd()
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "pwd:", err)
 					return
 				}
-				fmt.Println(cwd)
+				fmt.Fprintln(out, cwd)
 			},
 		},
 		"help": {
 			Type:        "shell builtin",
 			Description: "Show all available commands",
-			Handler: func(args string) {
-				fmt.Println("Available commands:")
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				fmt.Fprintln(out, "Available commands:")
 				keys := make([]string, 0, len(commands))
 				for cmd := range commands {
 					keys = append(keys, cmd)
 				}
 				sort.Strings(keys)
 				for _, cmd := range keys {
-					fmt.Printf("  %-10s %s\n", cmd, commands[cmd].Description)
+					fmt.Fprintf(out, "  %-10s %s\n", cmd, commands[cmd].Description)
 				}
 			},
 		},
 		"type": {
 			Type:        "shell builtin",
 			Description: "Describe how a command would be interpreted",
-			Handler: func(args string) {
+			Handler: func(args string, in io.Reader, out io.Writer) {
 				name := strings.TrimSpace(args)
 				if name == "" {
 					fmt.Fprintln(os.Stderr, "type: missing argument")
 					return
 				}
 				if cmd, ok := commands[name]; ok {
-					fmt.Printf("%s is a %s\n", name, cmd.Type)
+					fmt.Fprintf(out, "%s is a %s\n", name, cmd.Type)
 					return
 				}
 				if path, err := exec.LookPath(name); err == nil {
-					fmt.Println(name + " is " + path)
+					fmt.Fprintln(out, name+" is "+path)
 					return
 				}
-				fmt.Println(name + ": not found")
+				fmt.Fprintln(out, name+": not found")
 			},
 		},
 		"ls": {
 			Type:        "shell builtin",
 			Description: "List directory contents",
-			Handler: func(args string) {
+			Handler: func(args string, in io.Reader, out io.Writer) {
 				dir := "."
 				if args != "" {
 					dir = args
@@ -98,21 +172,21 @@ func main() {
 					return
 				}
 				for _, file := range files {
-					fmt.Println(file.Name())
+					fmt.Fprintln(out, file.Name())
 				}
 			},
 		},
 		"clear": {
 			Type:        "shell builtin",
 			Description: "Clear the terminal screen",
-			Handler: func(args string) {
-				fmt.Print("\033[H\033[2J")
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				fmt.Fprint(out, "\033[H\033[2J")
 			},
 		},
 		"cd": {
 			Type:        "shell builtin",
 			Description: "Change the current directory",
-			Handler: func(args string) {
+			Handler: func(args string, in io.Reader, out io.Writer) {
 				if args == "" {
 					home, err := os.UserHomeDir()
 					if err != nil {
@@ -128,39 +202,96 @@ func main() {
 		},
 		"grep": {
 			Type:        "shell builtin",
-			Description: "Search for a pattern in a file",
-			Handler: func(args string) {
+			Description: "Search for a pattern in a file or stdin",
+			Handler: func(args string, in io.Reader, out io.Writer) {
 				parts := strings.Fields(args)
-				if len(parts) < 2 {
-					fmt.Fprintln(os.Stderr, "grep: usage: grep <pattern> <file>")
+				if len(parts) == 0 {
+					fmt.Fprintln(os.Stderr, "grep: usage: grep <pattern> [file]")
 					return
 				}
 				pattern := parts[0]
-				filename := strings.Join(parts[1:], " ")
-
 				re, err := regexp.Compile(pattern)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "grep: invalid pattern:", err)
 					return
 				}
 
-				file, err := os.Open(filename)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "grep:", err)
-					return
+				// No file — read from pipe/stdin
+				var reader io.Reader
+				if len(parts) < 2 {
+					reader = in
+				} else {
+					f, err := os.Open(strings.Join(parts[1:], " "))
+					if err != nil {
+						fmt.Fprintln(os.Stderr, "grep:", err)
+						return
+					}
+					defer f.Close()
+					reader = f
 				}
-				defer file.Close()
 
-				scanner := bufio.NewScanner(file)
+				scanner := bufio.NewScanner(reader)
 				for scanner.Scan() {
 					line := scanner.Text()
 					if re.MatchString(line) {
-						fmt.Println(line)
+						fmt.Fprintln(out, line)
 					}
 				}
-				if err := scanner.Err(); err != nil {
-					fmt.Fprintln(os.Stderr, "grep:", err)
+			},
+		},
+		"del": {
+			Type:        "builtin",
+			Description: "Delete a file",
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				if args == "" {
+					fmt.Fprintln(out, "Usage: del <filename>")
+					return
 				}
+				if err := os.Remove(args); err != nil {
+					fmt.Fprintln(os.Stderr, "del:", err)
+				}
+			},
+		},
+		"mkfile": {
+			Type:        "builtin",
+			Description: "Create a new file",
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				if args == "" {
+					fmt.Fprintln(out, "Usage: mkfile <filename>")
+					return
+				}
+				if _, err := os.Create(args); err != nil {
+					fmt.Fprintln(os.Stderr, "mkfile:", err)
+				}
+			},
+		},
+		"mkdir": {
+			Type:        "builtin",
+			Description: "Create a new directory",
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				if args == "" {
+					fmt.Fprintln(out, "Usage: mkdir <dirname>")
+					return
+				}
+				if err := os.Mkdir(args, 0755); err != nil {
+					fmt.Fprintln(os.Stderr, "mkdir:", err)
+				}
+			},
+		},
+		"cat": {
+			Type:        "builtin",
+			Description: "Print file contents",
+			Handler: func(args string, in io.Reader, out io.Writer) {
+				if args == "" {
+					fmt.Fprint(os.Stderr, "Usage: cat <filename>")
+					return
+				}
+				data, err := os.ReadFile(args)
+				if err != nil {
+					fmt.Fprint(os.Stderr, "cat:", err)
+					return
+				}
+				fmt.Fprint(out, string(data))
 			},
 		},
 	}
@@ -170,33 +301,31 @@ func main() {
 		fmt.Print("$ ")
 
 		command, err := reader.ReadString('\n')
-
 		if err != nil {
-
 			fmt.Fprintln(os.Stderr, "Error reading input:", err)
-
 			os.Exit(1)
 		}
 
-		// Trim the newline and any extra whitespace
 		trimmed := strings.TrimSpace(command)
 
-		// Split the input into command and arguments
+		if strings.Contains(trimmed, " | ") {
+			runPipeline(trimmed, commands)
+			continue
+		}
+
 		parts := strings.Fields(trimmed)
 		if len(parts) == 0 {
-			continue // Skip empty input
+			continue
 		}
 
 		cmd := strings.ToLower(parts[0])
 		args := strings.Join(parts[1:], " ")
 
-		// Check if the command is a built-in command or an external command
 		if handler, ok := commands[cmd]; ok {
-			handler.Handler(args)
+			handler.Handler(args, os.Stdin, os.Stdout)
 		} else {
 			if path, err := exec.LookPath(cmd); err == nil {
 				extCmd := exec.Command(path, parts[1:]...)
-				extCmd.Args = parts
 				extCmd.Stdin = os.Stdin
 				extCmd.Stdout = os.Stdout
 				extCmd.Stderr = os.Stderr
@@ -204,7 +333,7 @@ func main() {
 					fmt.Fprintln(os.Stderr, err)
 				}
 			} else {
-				fmt.Println(trimmed + ": command not found")
+				fmt.Fprintln(os.Stderr, trimmed+": command not found")
 			}
 		}
 	}
